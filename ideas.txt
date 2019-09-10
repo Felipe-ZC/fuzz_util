@@ -1,0 +1,2 @@
+- When you find a url that returns a successful http status code, fork another
+	fuzz_util process using this url as the base_url argument.  
