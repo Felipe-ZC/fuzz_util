@@ -1,3 +1,0 @@
-docker.hackthebox.eu:36018/api
-docker.hackthebox.eu:36018/js
-docker.hackthebox.eu:36018/css
