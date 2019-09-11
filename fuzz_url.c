@@ -4,6 +4,7 @@
 #include <pthread.h> 
 #include <string.h>
 #include <curl/curl.h>
+#include <time.h>
 
 /*
  * Read from stdin (wordlist), use this input to fuzz the url in
@@ -56,8 +57,10 @@ CURLcode fuzzy_request(char url[], char fuzz[], CURL *curl)
 size_t noop_cb(void *ptr, size_t size, size_t nmemb, void *data){ return size * nmemb; }
 
 int write_buf(char *buf)
-{
-	FILE *fp = fopen("out.txt", "a+");
+{	
+	char out_file[BUFSIZ];
+	sprintf(out_file, "out/%lu", (unsigned long)time(NULL));
+	FILE *fp = fopen(out_file, "a+");
 	fprintf(fp,"%s\n", buf);
 	fclose(fp);
 }
@@ -71,27 +74,31 @@ void *fuzzy_request_async(void *args)
 	char* base_url = ((struct thread_args *)args)->url;
 	char * wl_name = ((struct thread_args *)args)->fname;
 	FILE *fp = fopen(wl_name, "r");
+	char buf[BUFSIZ]; // std name that gives a pretty big buffer
 	CURL *curl;
-  CURLcode res;
+    CURLcode res;
 	curl = curl_easy_init();
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, noop_cb);
-	char buf[BUFSIZ]; // std name that gives a pretty big buffer
 	pthread_t new_thread;
 	
-	while(fgets(buf, sizeof buf, fp)) { // read until end of file
-		if(buf[strlen(buf)-1] == '\n') { // check for buffer overflow...
+	while(fgets(buf, sizeof buf, fp)) // read until end of file
+   	{ 
+		if(buf[strlen(buf)-1] == '\n')	   // check for buffer overflow...
+		{ 
 			res = fuzzy_request(((struct thread_args *)args)->url, buf, curl);
 			if(res != CURLE_OK)
 				fprintf(stderr, "fuzzy request failed: %s\n",
-              curl_easy_strerror(res));
-			else {
+                curl_easy_strerror(res));
+			else
+		   	{
 				long status;	
 				curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
 				printf("status: %ld\n", status);
 
-				if(status < 400) {
+				if(status < 400) 
+				{
 					char *new_url;	
-				  curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &new_url);
+				    curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &new_url);
 					printf("Possible match found using: %s", buf);
 					printf("Forking a new process using %s as the base url...\n", new_url);
 					write_buf(new_url);
