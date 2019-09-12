@@ -1,2 +1,7 @@
 - When you find a url that returns a successful http status code, fork another
-	fuzz_util process using this url as the base_url argument.  
+	fuzz_util process using this url as the base_url argument.
+
+- Add a command line parameter that enables/disables redirection following...
+
+- When the server stops responding, write the last url used to an error log.  
+

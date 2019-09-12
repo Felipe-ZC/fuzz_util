@@ -45,15 +45,17 @@ CURLcode fuzzy_request(char url[], char fuzz[], CURL *curl)
 	strcpy(fuzzy_url, url);
 	strcat(fuzzy_url, fuzz);
 	trim_nl(fuzzy_url);
-	parse_url(fuzzy_url);
 	
   printf("Sending a GET request to: %s\n", fuzzy_url);
-
-	// NOTE: Synch request...
-	curl_easy_setopt(curl, CURLOPT_URL, fuzzy_url);
 	
 	// Follow redirects
  	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+	// Set timeout
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);	
+
+	// NOTE: Synch request...
+	curl_easy_setopt(curl, CURLOPT_URL, fuzzy_url);
 	CURLcode result = curl_easy_perform(curl);	
 	free(fuzzy_url);
 
@@ -93,7 +95,7 @@ void *fuzzy_request_async(void *args)
 
 	strcpy(base_url, ((t_args*)args)->url);
 	strcpy(wl_name, ((t_args*)args)->fname);
-	parse_url(base_url);
+
 
 	fp = fopen(wl_name, "r"); // TODO: Check for null pointer...
 	curl = curl_easy_init();
@@ -115,13 +117,11 @@ void *fuzzy_request_async(void *args)
 
 				if(status < 400) 
 				{
-					char *new_url;	
-				    
-					curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &new_url);
+					//char *new_url;	  
+					//curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &new_url);
 				
 					//printf("Possible match found using: %s", buf);
 					
-					//write_buf(new_url);
 					printf("Sub 400 status code returned: %ld\n", status);
 					// TODO: New url or base url... 
 					/*sprintf(new_args->url, "%s/", new_url);	*/
@@ -130,9 +130,10 @@ void *fuzzy_request_async(void *args)
 					printf("new url: %s\n", new_args->url);
 					strcpy(new_args->fname, wl_name);	
 					
+					write_buf(new_args->url);
 					// TODO: Check that this url hasnt been used already...	
 					// NOTE: Infinite loop here
-					printf("Forking a new process using %s as the base url...\n", new_url);
+					printf("Forking a new process using %s as the base url...\n", new_args->url);
 					pthread_result = pthread_create(&new_thread, NULL, fuzzy_request_async, (void*)new_args);
 					/*if(pthread_result == 0)	pthread_join(new_thread, NULL);*/
 				}	else printf("status code >= 400: %ld\n", status);
