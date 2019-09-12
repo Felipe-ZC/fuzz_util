@@ -16,6 +16,12 @@
  * gcc fuzz_url.c -lcurl -lpthread
  * */
 
+char *parse_url(char *str) {
+	if(str[strlen(str)-1] != '/')
+		return strcat(str, "/");
+	else return str;	
+}
+
 void trim_nl(char *str)
 {
 	if(str[strlen(str)-1] == '\n')
@@ -30,28 +36,27 @@ typedef struct thread_args
 
 CURLcode fuzzy_request(char url[], char fuzz[], CURL *curl)
 {
-	
-	printf("URL is: %s\nfuzz is: %s", url, fuzz);
-
-	//char fuzzy_url[strlen(url) + strlen(fuzz)];
+	//printf("URL is: %s\nfuzz is: %s\n", url, fuzz);
 	// Strings are null terminated so we add to the total length of url and fuzz...
-	char *fuzzy_url = (char *)malloc(sizeof(char*) * sizeof(strlen(url) + strlen(fuzz) + 2));
+	char *fuzzy_url = (char *)malloc(sizeof(char*) * BUFSIZ);
 	
   //printf("fuzzy_url1: %s\n", fuzzy_url);
 	
 	strcpy(fuzzy_url, url);
 	strcat(fuzzy_url, fuzz);
 	trim_nl(fuzzy_url);
+	parse_url(fuzzy_url);
 	
-    printf("Sending a GET request to: %s\n", fuzzy_url);
+  printf("Sending a GET request to: %s\n", fuzzy_url);
 
 	// NOTE: Synch request...
 	curl_easy_setopt(curl, CURLOPT_URL, fuzzy_url);
-	// Follow redirects
-  	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-	CURLcode result = curl_easy_perform(curl);
 	
+	// Follow redirects
+ 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+	CURLcode result = curl_easy_perform(curl);	
 	free(fuzzy_url);
+
 	return result;
 }
 
@@ -62,7 +67,7 @@ int write_buf(char *buf)
 {	
 	char out_file[BUFSIZ];
 	sprintf(out_file, "out/%lu.txt", (unsigned long)time(NULL));
-	printf("out file: %s", out_file);
+	// printf("out file: %s", out_file);
 	FILE *fp = fopen(out_file, "a+");
 	fprintf(fp,"%s\n", buf);
 	fclose(fp);
@@ -70,9 +75,9 @@ int write_buf(char *buf)
 
 void *fuzzy_request_async(void *args)
 {
-	printf("in thread...\n");
-	printf("%s", ((struct thread_args *)args)->url);
-	printf("%s", ((struct thread_args *)args)->fname);
+/*printf("in thread...\n");
+	printf("%s\n", ((struct thread_args *)args)->url);
+	printf("%s\n", ((struct thread_args *)args)->fname);*/
 
 	char base_url[BUFSIZ];
 	char wl_name[BUFSIZ]; 
@@ -80,7 +85,7 @@ void *fuzzy_request_async(void *args)
 	FILE *fp;
 	int pthread_result = 1;
 	CURL *curl;
-    CURLcode res;
+  CURLcode res;
 	pthread_t new_thread;;
 	t_args *new_args = (t_args*)malloc(sizeof(t_args));	
 	new_args->url = (char*)malloc(sizeof(char*) * BUFSIZ);
@@ -88,6 +93,8 @@ void *fuzzy_request_async(void *args)
 
 	strcpy(base_url, ((t_args*)args)->url);
 	strcpy(wl_name, ((t_args*)args)->fname);
+	parse_url(base_url);
+
 	fp = fopen(wl_name, "r"); // TODO: Check for null pointer...
 	curl = curl_easy_init();
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, noop_cb);
@@ -104,7 +111,7 @@ void *fuzzy_request_async(void *args)
 		   	{
 				long status;	
 				curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-				printf("status: %ld\n", status);
+				//printf("status: %ld\n", status);
 
 				if(status < 400) 
 				{
@@ -112,15 +119,15 @@ void *fuzzy_request_async(void *args)
 				    
 					curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &new_url);
 				
-					printf("Possible match found using: %s", buf);
+					//printf("Possible match found using: %s", buf);
 					
 					//write_buf(new_url);
-					printf("here");
+					printf("Sub 400 status code returned: %ld\n", status);
 					// TODO: New url or base url... 
 					/*sprintf(new_args->url, "%s/", new_url);	*/
 					sprintf(new_args->url, "%s%s", base_url, buf);
 					trim_nl(new_args->url);	
-					printf("new url: %s", new_args->url);
+					printf("new url: %s\n", new_args->url);
 					strcpy(new_args->fname, wl_name);	
 					
 					// TODO: Check that this url hasnt been used already...	
@@ -128,22 +135,21 @@ void *fuzzy_request_async(void *args)
 					printf("Forking a new process using %s as the base url...\n", new_url);
 					pthread_result = pthread_create(&new_thread, NULL, fuzzy_request_async, (void*)new_args);
 					/*if(pthread_result == 0)	pthread_join(new_thread, NULL);*/
-				}	
+				}	else printf("status code >= 400: %ld\n", status);
+
 			}
 		}
 	}
 	
-	printf("\nDone with %s\n\n", base_url);	
+	printf("Done with %s\n", base_url);	
 	
 	free(new_args->url);		
 	free(new_args->fname);		
 	free(new_args);
 	fclose(fp);
-    curl_easy_cleanup(curl);
+  curl_easy_cleanup(curl);
 
 	if(pthread_result == 0) pthread_join(new_thread, NULL);
-	/*printf("dam");*/
-	/*if(pthread_result == 0)	pthread_join(new_thread, NULL);*/
 		
 	void *ptr = 0;
 	return (ptr);
@@ -156,7 +162,6 @@ void *fuzzy_request_async(void *args)
 // TODO: Multi-threading...
 int main(int argc, char **argv) 
 {
-	
 	int opt, file_flag, thread_flag, max_threads;
 	char in_file[BUFSIZ];
 	extern char* optarg;
@@ -179,27 +184,22 @@ int main(int argc, char **argv)
 				break;
 		}
 	
-
   // TODO: Needs error handling!	
-	/*char *base_url = argv[optind];		*/
+	char *base_url = argv[optind];	
+	char *wl_file = (file_flag > 0) ? in_file : "wls/default.txt"; // Point to the same memory address
 	t_args *args = (t_args*)malloc(sizeof(t_args));
-	args->url = (char*)malloc(sizeof(char*));
-	args->fname = (char*)malloc(sizeof(char*));
+	args->url = (char*)malloc(sizeof(char*) * BUFSIZ);
+	args->fname = (char*)malloc(sizeof(char*) * BUFSIZ);	
 	
-	//args->url = "google.com/";
-	/*args->fname = (file_flag > 0) ? in_file : "wls/default2.txt"; // Point to the same memory address*/
- 	
-	strcpy(args->url, "google.com/");	
-	strcpy(args->fname, "wls/default.txt");	
+//	parse_url(base_url); // Add '/' character to the end of url, if its not there arleady...	
+	strcpy(args->url, base_url);	
+	strcpy(args->fname, wl_file);	
 
 	/*printf("base_url is: %s\n", base_url);	*/
 	printf("url is: %s\n", args->url);	
 	printf("file name is: %s\n", args->fname);		
 	
-	//TODO: Loop here, create a new thread when a match is found...
-	// main process...
-		
-	if(pthread_create(&thread_id, NULL, fuzzy_request_async, (void*)args) != 0){
+	if(pthread_create(&thread_id, NULL, fuzzy_request_async, (void*)args) != 0) {
 		printf("Error!");
 	} else pthread_join(thread_id, NULL);
 	
